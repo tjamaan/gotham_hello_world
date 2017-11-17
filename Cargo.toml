@@ -1,0 +1,6 @@
+[package]
+name = "gotham_hello_world"
+version = "0.1.0"
+authors = ["Turki Jamaan <tjamaan.cmuq@gmail.com>"]
+
+[dependencies]
