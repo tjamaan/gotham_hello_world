@@ -4,3 +4,5 @@ version = "0.1.0"
 authors = ["Turki Jamaan <tjamaan.cmuq@gmail.com>"]
 
 [dependencies]
+hyper = "0.11"
+gotham = "0.1"
