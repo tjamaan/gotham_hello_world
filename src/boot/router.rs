@@ -48,6 +48,37 @@ where
     Box::new(route)
 }
 
+fn create_capitalize_route<C, P>(active_pipelines: C, pipeline_set: PipelineSet<P>) -> Box<Route + Send + Sync>
+    where
+        C: PipelineHandleChain<P> + Send + Sync + 'static,
+        P: Send + Sync + 'static
+{
+    // create a matcher that matches only HTTP GET requests
+    let matcher = MethodOnlyRouteMatcher::new(vec![hyper::Method::Get]);
+
+    // create a dispatcher that will use the handler `controllers::welcome` after going through the active_pipeline
+    let dispatcher = DispatcherImpl::new(
+        || Ok(controllers::capitalize::capitalize),
+        active_pipelines,
+        pipeline_set);
+
+    // create the extractors that will:
+    // * extract the path of the request (stuff after `/welcome`)
+    // * extract the query string (stuff after `?`)
+    let extractors: Extractors<NoopPathExtractor, controllers::capitalize::CapitalizeQueryStringExtractor> = Extractors::new();
+
+    // create the actual route using the default route implementation (RouteImpl)
+    let route = RouteImpl::new(
+        matcher,
+        Box::new(dispatcher), // wrap the dispatcher in a box (i.e. put it behind a pointer)
+        extractors,
+        Delegation::Internal // we are handling this request in the same Router, not an external router
+    );
+
+    // wrap the route in a box (i.e. put it behind a pointer) and return it
+    Box::new(route)
+}
+
 pub fn router() -> Router {
     // create the pipeline set builder
     let pipeline_set_builder = new_pipeline_set();
@@ -62,7 +93,12 @@ pub fn router() -> Router {
 
     // TODO: add routes to the route tree here
     // add the route for the welcome page directly to the route tree. this makes it the root "/"
-    route_tree_builder.add_route(create_welcome_route((), pipeline_set));
+    route_tree_builder.add_route(create_welcome_route((), pipeline_set.clone()));
+
+    // create a route tree node for "/capitalize"
+    let mut capitalize_node = NodeBuilder::new("capitalize", SegmentType::Static);
+    capitalize_node.add_route(create_capitalize_route((), pipeline_set.clone()));
+    route_tree_builder.add_child(capitalize_node);
 
     // finalize the route tree
     let route_tree = route_tree_builder.finalize();

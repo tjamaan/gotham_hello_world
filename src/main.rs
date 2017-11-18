@@ -1,6 +1,10 @@
 extern crate hyper;
 extern crate gotham;
 extern crate mime;
+#[macro_use]
+extern crate gotham_derive;
+#[macro_use]
+extern crate log;
 
 mod boot;
 mod controllers;
