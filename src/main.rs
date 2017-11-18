@@ -1,7 +1,9 @@
 extern crate hyper;
 extern crate gotham;
+extern crate mime;
 
 mod boot;
+mod controllers;
 
 use hyper::server::Http;
 use gotham::handler::NewHandlerService;
