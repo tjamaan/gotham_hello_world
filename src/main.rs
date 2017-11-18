@@ -5,9 +5,13 @@ extern crate mime;
 extern crate gotham_derive;
 #[macro_use]
 extern crate log;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 mod boot;
 mod controllers;
+mod session;
 
 use hyper::server::Http;
 use gotham::handler::NewHandlerService;

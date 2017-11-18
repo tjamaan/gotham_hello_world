@@ -12,9 +12,12 @@ use gotham::router::request::query_string::NoopQueryStringExtractor;
 use gotham::router::route::RouteImpl;
 use gotham::router::route::Delegation;
 use gotham::router::route::dispatch::DispatcherImpl;
+use gotham::middleware::session::NewSessionMiddleware;
+use gotham::middleware::pipeline::new_pipeline;
 use hyper;
 
 use controllers;
+use session::MySession;
 
 fn create_welcome_route<C, P>(active_pipelines: C, pipeline_set: PipelineSet<P>) -> Box<Route + Send + Sync>
 where
@@ -110,11 +113,52 @@ fn create_cube_route<C, P>(active_pipelines: C, pipeline_set: PipelineSet<P>) ->
     Box::new(route)
 }
 
+fn create_visit_counter_route<C, P>(active_pipelines: C, pipeline_set: PipelineSet<P>) -> Box<Route + Send + Sync>
+    where
+        C: PipelineHandleChain<P> + Send + Sync + 'static,
+        P: Send + Sync + 'static
+{
+    // create a matcher that matches only HTTP GET requests
+    let matcher = MethodOnlyRouteMatcher::new(vec![hyper::Method::Get]);
+
+    // create a dispatcher that will use the handler `controllers::welcome` after going through the active_pipeline
+    let dispatcher = DispatcherImpl::new(
+        || Ok(controllers::visit_counter::visit_counter),
+        active_pipelines,
+        pipeline_set);
+
+    // create the extractors that will:
+    // * extract the path of the request (stuff after `/welcome`)
+    // * extract the query string (stuff after `?`)
+    // for now we will use extractors that do nothing (NoOp = No Operation)
+    let extractors: Extractors<NoopPathExtractor, NoopQueryStringExtractor> = Extractors::new();
+
+    // create the actual route using the default route implementation (RouteImpl)
+    let route = RouteImpl::new(
+        matcher,
+        Box::new(dispatcher), // wrap the dispatcher in a box (i.e. put it behind a pointer)
+        extractors,
+        Delegation::Internal // we are handling this request in the same Router, not an external router
+    );
+
+    // wrap the route in a box (i.e. put it behind a pointer) and return it
+    Box::new(route)
+}
+
 pub fn router() -> Router {
     // create the pipeline set builder
     let pipeline_set_builder = new_pipeline_set();
 
     // TODO: add pipelines to the pipeline set here
+    let (pipeline_set_builder, my_pipeline) = pipeline_set_builder.add(
+        new_pipeline()
+            .add(
+                NewSessionMiddleware::default()
+                    .insecure()
+                    .with_session_type::<MySession>()
+            )
+            .build()
+    );
 
     // finalize the pipeline set
     let pipeline_set =finalize_pipeline_set(pipeline_set_builder);
@@ -124,20 +168,25 @@ pub fn router() -> Router {
 
     // TODO: add routes to the route tree here
     // add the route for the welcome page directly to the route tree. this makes it the root "/"
-    route_tree_builder.add_route(create_welcome_route((), pipeline_set.clone()));
+    route_tree_builder.add_route(create_welcome_route((my_pipeline, ()), pipeline_set.clone()));
 
     // create a route tree node for "/capitalize"
     let mut capitalize_node = NodeBuilder::new("capitalize", SegmentType::Static);
-    capitalize_node.add_route(create_capitalize_route((), pipeline_set.clone()));
+    capitalize_node.add_route(create_capitalize_route((my_pipeline, ()), pipeline_set.clone()));
     route_tree_builder.add_child(capitalize_node);
 
     // create a route tree node for "/math"
     let mut cube_container_node = NodeBuilder::new("cube", SegmentType::Static);
     // create a route tree node for everything that comes after "/math/"
     let mut cube_node = NodeBuilder::new("number", SegmentType::Dynamic);
-    cube_node.add_route(create_cube_route((), pipeline_set.clone()));
+    cube_node.add_route(create_cube_route((my_pipeline, ()), pipeline_set.clone()));
     cube_container_node.add_child(cube_node);
     route_tree_builder.add_child(cube_container_node);
+
+    // create a route tree node for "/capitalize"
+    let mut visit_counter_node = NodeBuilder::new("visit_counter", SegmentType::Static);
+    visit_counter_node.add_route(create_visit_counter_route((my_pipeline, ()), pipeline_set.clone()));
+    route_tree_builder.add_child(visit_counter_node);
 
     // finalize the route tree
     let route_tree = route_tree_builder.finalize();
