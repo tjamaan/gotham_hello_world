@@ -23,7 +23,7 @@ fn capitalize_html(capitalized_text: String) -> String {
         </head>
         <body>
         <h1>
-        Use <pre>/capitalize?text=your text</pre> to capitalize your text.
+        Use "/capitalize?text=your text" to capitalize your text.
         </h1>
         <div>
         {}

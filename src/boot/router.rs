@@ -79,6 +79,37 @@ fn create_capitalize_route<C, P>(active_pipelines: C, pipeline_set: PipelineSet<
     Box::new(route)
 }
 
+fn create_cube_route<C, P>(active_pipelines: C, pipeline_set: PipelineSet<P>) -> Box<Route + Send + Sync>
+    where
+        C: PipelineHandleChain<P> + Send + Sync + 'static,
+        P: Send + Sync + 'static
+{
+    // create a matcher that matches only HTTP GET requests
+    let matcher = MethodOnlyRouteMatcher::new(vec![hyper::Method::Get]);
+
+    // create a dispatcher that will use the handler `controllers::welcome` after going through the active_pipeline
+    let dispatcher = DispatcherImpl::new(
+        || Ok(controllers::cube::cube),
+        active_pipelines,
+        pipeline_set);
+
+    // create the extractors that will:
+    // * extract the path of the request (stuff after `/welcome`)
+    // * extract the query string (stuff after `?`)
+    let extractors: Extractors<controllers::cube::CubePathExtractor, NoopQueryStringExtractor> = Extractors::new();
+
+    // create the actual route using the default route implementation (RouteImpl)
+    let route = RouteImpl::new(
+        matcher,
+        Box::new(dispatcher), // wrap the dispatcher in a box (i.e. put it behind a pointer)
+        extractors,
+        Delegation::Internal // we are handling this request in the same Router, not an external router
+    );
+
+    // wrap the route in a box (i.e. put it behind a pointer) and return it
+    Box::new(route)
+}
+
 pub fn router() -> Router {
     // create the pipeline set builder
     let pipeline_set_builder = new_pipeline_set();
@@ -99,6 +130,14 @@ pub fn router() -> Router {
     let mut capitalize_node = NodeBuilder::new("capitalize", SegmentType::Static);
     capitalize_node.add_route(create_capitalize_route((), pipeline_set.clone()));
     route_tree_builder.add_child(capitalize_node);
+
+    // create a route tree node for "/math"
+    let mut cube_container_node = NodeBuilder::new("cube", SegmentType::Static);
+    // create a route tree node for everything that comes after "/math/"
+    let mut cube_node = NodeBuilder::new("number", SegmentType::Dynamic);
+    cube_node.add_route(create_cube_route((), pipeline_set.clone()));
+    cube_container_node.add_child(cube_node);
+    route_tree_builder.add_child(cube_container_node);
 
     // finalize the route tree
     let route_tree = route_tree_builder.finalize();
